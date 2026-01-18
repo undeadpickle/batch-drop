@@ -91,6 +91,46 @@
       color: var(--figma-color-text-brand);
     }
 
+    .drop-zone.loading {
+      pointer-events: none;
+      border-color: var(--figma-color-border-brand);
+    }
+
+    .drop-zone.loading .drop-zone-icon,
+    .drop-zone.loading .drop-zone-text {
+      display: none;
+    }
+
+    .drop-zone-loading {
+      display: none;
+    }
+
+    .drop-zone.loading .drop-zone-loading {
+      display: block;
+    }
+
+    .drop-zone-loading-text {
+      color: var(--figma-color-text-secondary);
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+
+    .drop-zone-loading-bar {
+      height: 4px;
+      background: var(--figma-color-bg-tertiary);
+      border-radius: 2px;
+      overflow: hidden;
+      max-width: 200px;
+      margin: 0 auto;
+    }
+
+    .drop-zone-loading-fill {
+      height: 100%;
+      background: var(--figma-color-bg-brand);
+      transition: width 0.15s ease;
+      width: 0%;
+    }
+
     .file-info {
       margin-top: 12px;
     }
@@ -168,6 +208,36 @@
 
     .skip-warning-list li:last-child {
       margin-bottom: 0;
+    }
+
+    .resolution-picker {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: var(--figma-color-bg-secondary);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .resolution-picker.hidden {
+      display: none;
+    }
+
+    .resolution-picker label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--figma-color-text);
+    }
+
+    .resolution-picker select {
+      flex: 1;
+      max-width: 120px;
+    }
+
+    .resolution-hint {
+      font-size: 11px;
+      color: var(--figma-color-text-secondary);
     }
 
     .layout-options {
@@ -330,7 +400,7 @@
       <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
       <circle cx="7" cy="7" r="2" fill="currentColor"/>
     </svg>
-    <span id="placementText">Component will be placed at (0, 0) on the current page</span>
+    <span id="placementText">Will place at current view</span>
   </div>
 
   <!-- File Selection -->
@@ -359,6 +429,12 @@
         <strong>Click to select files</strong> or drag and drop<br>
         PNG, JPG, GIF, SVG supported
       </div>
+      <div class="drop-zone-loading" id="dropZoneLoading">
+        <div class="drop-zone-loading-text" id="loadingText">Reading files...</div>
+        <div class="drop-zone-loading-bar">
+          <div class="drop-zone-loading-fill" id="loadingBar"></div>
+        </div>
+      </div>
       <input type="file" id="fileInput" multiple accept=".png,.jpg,.jpeg,.gif,.svg" style="display: none;">
     </div>
 
@@ -382,6 +458,11 @@
           <strong>Some files were skipped:</strong>
           <ul class="skip-warning-list" id="skipWarningList"></ul>
         </div>
+      </div>
+      <div class="resolution-picker hidden" id="resolutionPicker">
+        <label>Resolution</label>
+        <select id="resolutionSelect"></select>
+        <span class="resolution-hint" id="resolutionHint"></span>
       </div>
     </div>
   </div>
@@ -490,6 +571,9 @@
     let selectedLayout = 'grid';
     let isImporting = false;
     let currentSkipInfo = { duplicates: 0, retina: 0, wrongType: 0, tooLarge: 0 };
+    let availableResolutions = [];
+    let selectedResolution = '1x';
+    let rawFileList = null; // Store original FileList for re-processing
 
     // Elements
     const dropZone = document.getElementById('dropZone');
@@ -517,6 +601,11 @@
     const progressText = document.getElementById('progressText');
     const placementInfo = document.getElementById('placementInfo');
     const placementText = document.getElementById('placementText');
+    const loadingText = document.getElementById('loadingText');
+    const loadingBar = document.getElementById('loadingBar');
+    const resolutionPicker = document.getElementById('resolutionPicker');
+    const resolutionSelect = document.getElementById('resolutionSelect');
+    const resolutionHint = document.getElementById('resolutionHint');
 
     // File type accept strings
     const fileTypeAccepts = {
@@ -531,12 +620,20 @@
     const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
     const MAX_FILE_SIZE_MB = 5;
 
-    // Helper: Extract base filename (strip extension and @2x/@3x)
+    // Helper: Extract base filename (strip extension and @2x/@3x/@4x)
     function getBaseName(filename) {
       let name = filename.replace(/\.[^/.]+$/, '');
-      name = name.replace(/@[123]x$/i, '');
-      name = name.replace(/[_-]?[123]x$/i, '');
+      name = name.replace(/@[1234]x$/i, '');
+      name = name.replace(/[_-]?[1234]x$/i, '');
       return name;
+    }
+
+    // Helper: Detect resolution from filename
+    function getResolution(filename) {
+      if (/@4x/i.test(filename) || /[_-]4x\./i.test(filename)) return '4x';
+      if (/@3x/i.test(filename) || /[_-]3x\./i.test(filename)) return '3x';
+      if (/@2x/i.test(filename) || /[_-]2x\./i.test(filename)) return '2x';
+      return '1x';
     }
 
     // Helper: Get file extension
@@ -562,15 +659,60 @@
     // Process selected files
     async function processFiles(fileList) {
       console.log('processFiles called with', fileList.length, 'files');
+      rawFileList = fileList; // Store for re-processing on resolution change
       const filesArray = Array.from(fileList);
+
+      // First pass: detect available resolutions (quick, no file reading)
+      const resolutionCounts = { '1x': 0, '2x': 0, '3x': 0, '4x': 0 };
+      for (const file of filesArray) {
+        if (matchesFilter(file.name) && file.size <= MAX_FILE_SIZE_BYTES) {
+          resolutionCounts[getResolution(file.name)]++;
+        }
+      }
+
+      // Determine available resolutions
+      availableResolutions = Object.entries(resolutionCounts)
+        .filter(([_, count]) => count > 0)
+        .map(([res]) => res)
+        .sort((a, b) => parseInt(a) - parseInt(b));
+
+      // Update resolution picker
+      if (availableResolutions.length > 1) {
+        updateResolutionPicker(resolutionCounts);
+        resolutionPicker.classList.remove('hidden');
+      } else {
+        resolutionPicker.classList.add('hidden');
+        selectedResolution = availableResolutions[0] || '1x';
+      }
+
+      // Process files with current resolution selection
+      await processFilesWithResolution(filesArray);
+    }
+
+    // Process files filtered by selected resolution
+    async function processFilesWithResolution(filesArray) {
+      const total = filesArray.length;
+
+      // Show loading state
+      dropZone.classList.add('loading');
+      loadingBar.style.width = '0%';
+      loadingText.textContent = `Reading ${total} file${total !== 1 ? 's' : ''}...`;
+
       const validFiles = [];
       const seenBaseNames = new Set();
       let skippedDuplicates = 0;
-      let skippedRetina = 0;
       let skippedWrongType = 0;
       let skippedTooLarge = 0;
+      let skippedOtherResolution = 0;
 
-      for (const file of filesArray) {
+      for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i];
+
+        // Update progress
+        const percent = Math.round(((i + 1) / total) * 100);
+        loadingBar.style.width = `${percent}%`;
+        loadingText.textContent = `Reading ${i + 1} of ${total}...`;
+
         if (!matchesFilter(file.name)) {
           skippedWrongType++;
           continue;
@@ -581,14 +723,17 @@
           continue;
         }
 
+        // Filter by selected resolution
+        const fileResolution = getResolution(file.name);
+        if (availableResolutions.length > 1 && fileResolution !== selectedResolution) {
+          skippedOtherResolution++;
+          continue;
+        }
+
         const baseName = getBaseName(file.name);
 
         if (seenBaseNames.has(baseName.toLowerCase())) {
-          if (/@[123]x/i.test(file.name) || /[_-]?[123]x\./i.test(file.name)) {
-            skippedRetina++;
-          } else {
-            skippedDuplicates++;
-          }
+          skippedDuplicates++;
           continue;
         }
 
@@ -618,10 +763,13 @@
         }
       }
 
+      // Hide loading state
+      dropZone.classList.remove('loading');
+
       selectedFiles = validFiles;
       currentSkipInfo = {
         duplicates: skippedDuplicates,
-        retina: skippedRetina,
+        retina: 0, // No longer tracking retina separately
         wrongType: skippedWrongType,
         tooLarge: skippedTooLarge
       };
@@ -639,6 +787,28 @@
       }
 
       updateImportButton();
+    }
+
+    // Update resolution picker dropdown
+    function updateResolutionPicker(resolutionCounts) {
+      resolutionSelect.innerHTML = '';
+
+      const resOrder = ['1x', '2x', '3x', '4x'];
+      for (const res of resOrder) {
+        if (resolutionCounts[res] > 0) {
+          const option = document.createElement('option');
+          option.value = res;
+          option.textContent = res === '1x' ? '1x (base)' : res;
+          if (res === selectedResolution) {
+            option.selected = true;
+          }
+          resolutionSelect.appendChild(option);
+        }
+      }
+
+      // Update hint with file count
+      const count = resolutionCounts[selectedResolution] || 0;
+      resolutionHint.textContent = `${count} file${count !== 1 ? 's' : ''}`;
     }
 
     // Update file count and warning display
@@ -663,9 +833,9 @@
         fileCountText.textContent += ' — Large import';
       }
 
-      // Build skip warnings
-      const { duplicates, retina, wrongType, tooLarge } = currentSkipInfo;
-      const hasSkipped = duplicates > 0 || retina > 0 || wrongType > 0 || tooLarge > 0;
+      // Build skip warnings (retina variants now handled by resolution picker)
+      const { duplicates, wrongType, tooLarge } = currentSkipInfo;
+      const hasSkipped = duplicates > 0 || wrongType > 0 || tooLarge > 0;
 
       if (hasSkipped) {
         skipWarning.classList.remove('hidden');
@@ -686,11 +856,6 @@
           li.textContent = `${duplicates} duplicate${duplicates !== 1 ? 's' : ''} removed`;
           skipWarningList.appendChild(li);
         }
-        if (retina > 0) {
-          const li = document.createElement('li');
-          li.textContent = `${retina} retina variant${retina !== 1 ? 's' : ''} (@2x/@3x) skipped`;
-          skipWarningList.appendChild(li);
-        }
       } else {
         skipWarning.classList.add('hidden');
       }
@@ -699,9 +864,13 @@
     // Clear selected files
     function clearSelection() {
       selectedFiles = [];
+      rawFileList = null;
+      availableResolutions = [];
+      selectedResolution = '1x';
       currentSkipInfo = { duplicates: 0, retina: 0, wrongType: 0, tooLarge: 0 };
       fileInput.value = '';
       fileInfo.classList.add('hidden');
+      resolutionPicker.classList.add('hidden');
       componentName.value = '';
       updateImportButton();
     }
@@ -772,6 +941,23 @@
       fileInput.accept = fileTypeAccepts[fileTypeFilter.value];
       if (fileInput.files.length > 0) {
         processFiles(fileInput.files);
+      }
+    });
+
+    // Resolution select change
+    resolutionSelect.addEventListener('change', async () => {
+      selectedResolution = resolutionSelect.value;
+      // Update hint with count for selected resolution
+      if (rawFileList) {
+        const filesArray = Array.from(rawFileList);
+        const count = filesArray.filter(f =>
+          matchesFilter(f.name) &&
+          f.size <= MAX_FILE_SIZE_BYTES &&
+          getResolution(f.name) === selectedResolution
+        ).length;
+        resolutionHint.textContent = `${count} file${count !== 1 ? 's' : ''}`;
+        // Re-process files with new resolution
+        await processFilesWithResolution(filesArray);
       }
     });
 
@@ -863,7 +1049,7 @@
             placementText.textContent = `Will place inside "${msg.parentName}"`;
             placementInfo.classList.add('inside-frame');
           } else {
-            placementText.textContent = 'Will place at (0, 0) on current page';
+            placementText.textContent = 'Will place at current view';
             placementInfo.classList.remove('inside-frame');
           }
           break;

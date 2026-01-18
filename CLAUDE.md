@@ -46,6 +46,8 @@ This is a Figma plugin with a dual-process architecture:
 figma.combineAsVariants(components, parentNode)
 ```
 
+**ComponentSet positioning:** After `combineAsVariants()`, explicitly set `componentSet.x` and `componentSet.y` — the parent parameter only sets containment, not position.
+
 **Variant naming format:** `PropertyName=Value` (e.g., `Type=Avatar01`)
 
 **Reserved characters in variant names:** `=`, `,`, `/` — these must be sanitized
@@ -58,3 +60,9 @@ figma.combineAsVariants(components, parentNode)
 - File size limit: 5MB per file (enforced in UI)
 - Batch processing: yields every 25 files with `setTimeout` to keep UI responsive
 - No network access: manifest has `allowedDomains: ["none"]`
+
+## Retina/Resolution Handling
+
+**Detection patterns:** `@2x`, `@3x`, `@4x`, `-2x`, `_2x` (case insensitive)
+
+The `getResolution()` helper in `ui.html` detects resolution from filenames. When multiple resolutions exist in a selection, a resolution picker appears letting users choose which density to import.

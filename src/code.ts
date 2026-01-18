@@ -286,11 +286,17 @@ async function processImport(files: ImageFile[], settings: ImportSettings) {
   // Combine as variants to create component set
   const componentSet = figma.combineAsVariants(components, targetParent);
   componentSet.name = settings.componentName;
-  
-  // If placed on page at 0,0, move the component set
+
+  // Position the ComponentSet
   if (isPage) {
-    componentSet.x = 0;
-    componentSet.y = 0;
+    // Place at viewport center
+    const center = figma.viewport.center;
+    componentSet.x = center.x - componentSet.width / 2;
+    componentSet.y = center.y - componentSet.height / 2;
+  } else {
+    // Place inside the selected frame/section with padding
+    componentSet.x = 100;
+    componentSet.y = 100;
   }
   
   // Select the new component set
