@@ -1,25 +1,28 @@
 # Session Handoff
 
-> Updated: 2026-01-18 15:30
-> Focus: UX improvements - placement, loading feedback, resolution picker
+> Updated: 2026-01-18 17:45
+> Focus: UI polish and Figma Community submission
 
 ---
 
 ## What Got Done
 
-- **Component placement fix**: Components now center at viewport when no selection, or place at (100,100) inside selected frame/section
-- **File loading progress**: Drop zone shows "Reading X of Y..." with progress bar while files are being read into memory
-- **Resolution picker**: Auto-detects @1x/@2x/@3x/@4x variants and shows dropdown when multiple resolutions exist
+- **Sticky footer**: Cancel/Import buttons now fixed at bottom with scrollable content area + shadow for visual separation
+- **Status box colors**: Success/warning/error boxes now use light backgrounds with dark text for better readability
+- **Placement section**: Moved to its own titled section above Layout (was floating at top)
+- **Plugin submission**: Published to Figma Community — currently under review
+- **Assets folder**: Added `assets/` with icon.png (128×128) and cover-image.png (1920×1080)
+- **Plugin ID**: Updated manifest with Figma-assigned ID `1594794124094227141`
 
 ## What's Next
 
-1. **Test retina workflow**: Verify resolution picker with real assets containing @2x/@3x variants
-2. **Consider UX refinements**: The resolution picker appears inside file-info section — might want icon or better visual treatment
-3. **Commit changes**: All work is uncommitted in src/code.ts and src/ui.html
+1. **Wait for Figma review**: 5-10 business days, email notification on approval
+2. **Post-approval**: Update README with Community link once live
+3. **Future features**: Consider adding more layout options, custom spacing control, or preview thumbnails
 
 ## Blockers
 
-- None
+- None — plugin is feature-complete and submitted
 
 ---
 
@@ -27,39 +30,37 @@
 
 ### What Worked
 
-- **Incremental resolution detection**: Doing a quick first pass to count resolutions before the heavy file-reading loop avoided blocking the UI twice
-- **CSS state classes**: Using `.loading`, `.hidden` classes made state management clean
-- **Storing rawFileList**: Keeping the original FileList allows re-processing when user changes resolution selection
+- **Flex-based sticky footer**: Using `display: flex; flex-direction: column` on body with a `.content` wrapper that has `overflow-y: auto` was cleaner than position:fixed approaches. No z-index issues.
+- **Explicit color values over Figma variables**: The built-in `--figma-color-bg-success` etc. had poor contrast. Hardcoding light bg + dark text (`#e8f5e9` / `#2e7d32`) solved readability immediately.
+- **Research-first for submission**: Looking up Figma's exact requirements before generating content avoided rework.
 
 ### What Broke
 
-- **ComponentSet positioning after combineAsVariants**: Initially assumed `combineAsVariants(components, targetParent)` would position the result — it only sets the parent container, not the x/y coordinates. Had to explicitly set `componentSet.x/y` after combining.
+- **iconPath in manifest**: Tried adding `"iconPath": "assets/icon.png"` to manifest.json — Figma rejected it as an unknown property. Plugin icons are upload-only via the publish UI, not referenced in manifest.
 
 ### Wrong Assumptions
 
-- **Retina skip tracking**: The old `skippedRetina` counter became obsolete after adding the resolution picker. Had to remove it from the skip warning logic to avoid confusion (we're no longer "skipping" retina, we're letting users choose).
+- **Manifest icon support**: Assumed Figma plugin manifests supported icon paths like many other plugin systems. They don't — icons are uploaded through Figma's publish flow only.
 
 ---
 
 ## Quirks Discovered
 
-- **figma.combineAsVariants parent parameter**: The second parameter sets which node contains the resulting ComponentSet, but does NOT set position. You must manually set `componentSet.x` and `componentSet.y` after the call.
+- **Figma manifest schema is strict**: Unknown properties cause "Manifest error: unexpected extra property" — no graceful ignoring. Only use documented fields.
 
-- **Resolution detection regex order matters**: Must check @4x before @2x in the regex chain since `/@2x/` would never match 4x files anyway, but conceptually higher densities should be checked first.
+- **Plugin ID format**: When publishing, Figma assigns a numeric ID (e.g., `1594794124094227141`). Update manifest with this ID after first publish to link local dev version to Community listing.
 
 ---
 
 ## CLAUDE.md Suggestions
 
-- [ ] Add note under "Figma Plugin Patterns" about ComponentSet positioning:
+- [ ] Add note about manifest strictness:
   ```
-  **ComponentSet positioning:** After `combineAsVariants()`, explicitly set
-  `componentSet.x` and `componentSet.y` — the parent parameter only sets
-  containment, not position.
+  **Manifest validation:** Figma rejects unknown properties — don't add custom fields.
+  Plugin icons are uploaded via publish UI, not referenced in manifest.
   ```
 
-- [ ] Add note about resolution/retina detection patterns:
+- [ ] Add Figma Community link once approved:
   ```
-  **Retina detection patterns:** @2x, @3x, @4x, -2x, _2x (case insensitive)
-  Use `getResolution()` helper in ui.html for consistent detection.
+  **Community:** https://www.figma.com/community/plugin/1594794124094227141
   ```
