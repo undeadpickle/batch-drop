@@ -1,10 +1,10 @@
 import { ImageFile, ImportSettings, UIMessage, LIMITS } from './types';
 
 // Show UI
-figma.showUI(__html__, { 
-  width: 400, 
-  height: 560,
-  themeColors: true 
+figma.showUI(__html__, {
+  width: 400,
+  height: 640,
+  themeColors: true
 });
 
 // Check current selection for valid parent
