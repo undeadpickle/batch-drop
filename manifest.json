@@ -1,6 +1,6 @@
 {
   "name": "Batch Drop",
-  "id": "batch-drop",
+  "id": "1594794124094227141",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",
